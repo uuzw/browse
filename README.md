@@ -57,9 +57,13 @@ device-preview-tool/
 
 ## 制約・注意点
 
-- **フレーム埋め込み制限**: 対象サイトが `X-Frame-Options: DENY` や
-  `Content-Security-Policy: frame-ancestors` を送出している場合、iframeでの表示はブロックされる
-  （多くのローカル開発サーバーでは問題なし。本番の他社サイト検証には使えない場合がある）
+- **フレーム埋め込み制限（X-Frame-Options / CSP）**: `background.js`のルールで対象サイトの
+  `X-Frame-Options` / `Content-Security-Policy` レスポンスヘッダーを自動的に除去しているため、
+  多くのサイトは埋め込み表示できます。ただし一部サイトはJavaScript側で
+  `if (window.top !== window.self) { ... }` のようなフレーム離脱コード（frame busting）を
+  実装している場合があり、その場合はヘッダー除去だけでは回避できません。
+  また、このヘッダー除去は**自分が管理・検証する権限のあるサイト、または個人の開発・検証目的**
+  でのみ使用してください。第三者サイトの意図しない埋め込みや、規約に反する用途では使用しないこと。
 - **navigator上書きのタイミング**: `content-script-bridge.js` は `document_start` で
   ベストエフォート的に注入するため、対象ページの最初期に実行されるインラインスクリプトより
   後になる可能性がゼロではない（多くのケースでは問題なく先行して適用される）
