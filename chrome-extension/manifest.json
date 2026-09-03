@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Device Preview Sync",
+  "version": "1.0.0",
+  "description": "GitHub Pages上のDevice Preview Toolと連携し、テスト対象サイトへのUser-Agent/クライアントヒントとページ内navigator情報を同期するテスト用拡張機能",
+  "permissions": ["declarativeNetRequest", "storage"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://YOUR_GH_USERNAME.github.io/*"],
+      "js": ["content-script-page.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "all_frames": true,
+      "js": ["content-script-bridge.js"],
+      "run_at": "document_start"
+    }
+  ]
+}
