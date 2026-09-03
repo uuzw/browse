@@ -10,7 +10,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === 'PING') {
     console.debug('[DevicePreviewSync] PING received, sender origin:', _sender?.origin);
     sendResponse({ ok: true, requestId: msg.requestId });
-    return; // 同期応答のためtrueを返す必要はない
+    return; 
   }
 
   if (msg.type !== 'SET_DEVICE') return;
@@ -33,7 +33,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       const rule = {
         id: RULE_ID,
         priority: 1,
-        action: { type: 'modifyHeaders', requestHeaders },
+        action: {
+          type: 'modifyHeaders',
+          requestHeaders,
+          responseHeaders: [
+            { header: 'X-Frame-Options', operation: 'remove' },
+            { header: 'Content-Security-Policy', operation: 'remove' },
+            { header: 'Content-Security-Policy-Report-Only', operation: 'remove' }
+          ]
+        },
         condition: {
           requestDomains: [host],
           resourceTypes: [
@@ -68,5 +76,5 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     }
   })();
 
-  return true; // 非同期でsendResponseを呼ぶことを示す
+  return true; 
 });
