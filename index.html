@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Device Preview Tool</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    --bg:#14161a; --panel:#1c1f26; --border:#2a2e37; --text:#e7e9ee;
+    --muted:#8b93a3; --accent:#4f8cff; --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;}
+  .app{display:flex;height:100vh;}
+  .sidebar{width:260px;flex:0 0 260px;background:var(--panel);border-right:1px solid var(--border);padding:20px 16px;overflow-y:auto;}
+  .sidebar h1{font-size:15px;margin:0 0 4px;}
+  .sidebar p.sub{font-size:12px;color:var(--muted);margin:0 0 20px;}
+  label{display:block;font-size:11px;color:var(--muted);margin:16px 0 6px;text-transform:uppercase;letter-spacing:.04em;}
+  input[type=text]{width:100%;padding:8px 10px;background:#11131a;border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;}
+  .device-list{display:flex;flex-direction:column;gap:6px;margin-top:4px;}
+  .device-btn{display:flex;justify-content:space-between;align-items:center;padding:9px 10px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;cursor:pointer;text-align:left;}
+  .device-btn:hover{border-color:var(--accent);}
+  .device-btn.active{background:rgba(79,140,255,.12);border-color:var(--accent);}
+  .device-btn span.dim{color:var(--muted);font-family:var(--mono);font-size:11px;}
+  .go-btn{margin-top:16px;width:100%;padding:9px;background:var(--accent);border:none;border-radius:6px;color:#fff;font-size:13px;cursor:pointer;}
+  .status{margin-top:14px;font-size:11px;color:var(--muted);line-height:1.5;}
+  .status.ok{color:#5ec98c;}
+  .status.warn{color:#e0a85a;}
+  .stage{flex:1;display:flex;align-items:center;justify-content:center;overflow:auto;padding:24px;position:relative;}
+  .frame-outer{transition:width .2s ease,height .2s ease;box-shadow:0 0 0 1px var(--border),0 20px 60px rgba(0,0,0,.4);border-radius:10px;overflow:hidden;background:#000;}
+  #preview-iframe{width:100%;height:100%;border:0;display:block;background:#fff;}
+  .size-tag{position:absolute;top:8px;left:50%;transform:translateX(-50%);font-family:var(--mono);font-size:11px;color:var(--muted);}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <h1>Device Preview Tool</h1>
+    <p class="sub">画面サイズ・User-Agent を切り替えて検証</p>
+
+    <label for="target-url">テスト対象URL</label>
+    <input id="target-url" type="text" placeholder="http://localhost:3000">
+    <button class="go-btn" id="go-btn">読み込む</button>
+
+    <label>デバイス</label>
+    <div class="device-list" id="device-list"></div>
+
+    <div class="status" id="status">拡張機能: 未検出（UAは変更されません）</div>
+  </aside>
+
+  <main class="stage">
+    <div class="size-tag" id="size-tag"></div>
+    <div class="frame-outer" id="frame-outer">
+      <iframe id="preview-iframe" title="preview"></iframe>
+    </div>
+  </main>
+</div>
+
+<script>
+// ---- デバイスプリセット ----
+const DEVICES = {
+  iphone14: {
+    label: 'iPhone 14', width: 390, height: 844, dpr: 3, touch: true,
+    platform: 'iPhone', vendor: 'Apple Computer, Inc.',
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+    secChUa: ''
+  },
+  iphoneSE: {
+    label: 'iPhone SE', width: 375, height: 667, dpr: 2, touch: true,
+    platform: 'iPhone', vendor: 'Apple Computer, Inc.',
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+    secChUa: ''
+  },
+  pixel7: {
+    label: 'Pixel 7 (Android)', width: 412, height: 915, dpr: 2.625, touch: true,
+    platform: 'Android', vendor: 'Google Inc.',
+    userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36',
+    secChUa: '"Not.A/Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"'
+  },
+  galaxyS22: {
+    label: 'Galaxy S22 (Android)', width: 360, height: 780, dpr: 3, touch: true,
+    platform: 'Android', vendor: 'Google Inc.',
+    userAgent: 'Mozilla/5.0 (Linux; Android 14; SM-S901B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36',
+    secChUa: '"Not.A/Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"'
+  },
+  ipad: {
+    label: 'iPad', width: 820, height: 1180, dpr: 2, touch: true,
+    platform: 'iPad', vendor: 'Apple Computer, Inc.',
+    userAgent: 'Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+    secChUa: ''
+  },
+  desktop: {
+    label: 'Desktop', width: 1440, height: 900, dpr: 1, touch: false,
+    platform: 'Win32', vendor: 'Google Inc.',
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+    secChUa: '"Not.A/Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"'
+  }
+};
+
+let currentKey = 'iphone14';
+let extensionOnline = false;
+
+const listEl = document.getElementById('device-list');
+const outerEl = document.getElementById('frame-outer');
+const iframeEl = document.getElementById('preview-iframe');
+const statusEl = document.getElementById('status');
+const sizeTagEl = document.getElementById('size-tag');
+const urlInput = document.getElementById('target-url');
+
+function renderDeviceList() {
+  listEl.innerHTML = '';
+  Object.entries(DEVICES).forEach(([key, d]) => {
+    const btn = document.createElement('button');
+    btn.className = 'device-btn' + (key === currentKey ? ' active' : '');
+    btn.innerHTML = `<span>${d.label}</span><span class="dim">${d.width}×${d.height}</span>`;
+    btn.addEventListener('click', () => selectDevice(key));
+    listEl.appendChild(btn);
+  });
+}
+
+function fitScale(w, h) {
+  const stage = document.querySelector('.stage');
+  const availW = stage.clientWidth - 48;
+  const availH = stage.clientHeight - 48;
+  const scale = Math.min(1, availW / w, availH / h);
+  outerEl.style.width = w + 'px';
+  outerEl.style.height = h + 'px';
+  outerEl.style.transform = `scale(${scale})`;
+  outerEl.style.transformOrigin = 'center center';
+}
+
+function selectDevice(key) {
+  currentKey = key;
+  const d = DEVICES[key];
+  renderDeviceList();
+  fitScale(d.width, d.height);
+  sizeTagEl.textContent = `${d.label} — ${d.width}×${d.height} @${d.dpr}x`;
+  syncWithExtensionAndLoad(d);
+}
+
+function syncWithExtensionAndLoad(d) {
+  const url = urlInput.value.trim();
+  if (!url) {
+    statusEl.textContent = 'テスト対象URLを入力してください';
+    statusEl.className = 'status warn';
+    return;
+  }
+
+  let origin;
+  try { origin = new URL(url).origin; }
+  catch (e) {
+    statusEl.textContent = 'URLの形式が正しくありません';
+    statusEl.className = 'status warn';
+    return;
+  }
+
+  const requestId = 'req_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+  const payload = {
+    source: 'device-preview-tool',
+    type: 'SET_DEVICE',
+    requestId,
+    targetOrigin: origin,
+    userAgent: d.userAgent,
+    platform: d.platform,
+    vendor: d.vendor,
+    width: d.width,
+    height: d.height,
+    dpr: d.dpr,
+    touch: d.touch,
+    secChUa: d.secChUa,
+    secChUaMobile: d.touch ? '?1' : '?0',
+    secChUaPlatform: `"${d.platform}"`
+  };
+
+  let settled = false;
+  const onAck = (event) => {
+    if (event.source !== window) return;
+    if (event.data?.source !== 'device-preview-extension') return;
+    if (event.data.requestId !== requestId) return;
+    settled = true;
+    window.removeEventListener('message', onAck);
+    extensionOnline = !!event.data.ok;
+    console.debug('[DevicePreviewTool] ACK received', event.data);
+    statusEl.textContent = extensionOnline
+      ? `拡張機能: 同期OK（UA: ${d.label}）`
+      : '拡張機能: エラーが発生しました（詳細はService Workerのコンソールを確認）';
+    statusEl.className = 'status ' + (extensionOnline ? 'ok' : 'warn');
+    iframeEl.src = url;
+  };
+  window.addEventListener('message', onAck);
+  console.debug('[DevicePreviewTool] posting SET_DEVICE', payload);
+  window.postMessage(payload, '*');
+
+  // Service WorkerのコールドスタートやCloudflare経由の遅延を考慮し、
+  // 応答待ちは2秒確保する（拡張機能が本当に無い場合のみここに落ちる）。
+  setTimeout(() => {
+    if (settled) return;
+    window.removeEventListener('message', onAck);
+    console.warn('[DevicePreviewTool] no ACK within timeout — content script not reachable on this origin:', location.origin);
+    statusEl.textContent = '拡張機能: 未検出（画面サイズのみ反映、UAは既定のまま）';
+    statusEl.className = 'status warn';
+    iframeEl.src = url;
+  }, 2000);
+}
+
+// ページ読み込み直後に軽量PINGを送り、URL未入力でも拡張機能の疎通だけ先に確認する。
+function pingExtension() {
+  const requestId = 'ping_' + Date.now();
+  const onPong = (event) => {
+    if (event.source !== window) return;
+    if (event.data?.source !== 'device-preview-extension') return;
+    if (event.data.requestId !== requestId) return;
+    window.removeEventListener('message', onPong);
+    console.debug('[DevicePreviewTool] PONG received — content script is reachable on', location.origin);
+    statusEl.textContent = '拡張機能: 検出済み（デバイスを選択してください）';
+    statusEl.className = 'status ok';
+  };
+  window.addEventListener('message', onPong);
+  window.postMessage({ source: 'device-preview-tool', type: 'PING', requestId }, '*');
+  setTimeout(() => {
+    window.removeEventListener('message', onPong);
+    console.warn(
+      '[DevicePreviewTool] PING got no response. Check: 1) manifest.json matches includes', location.origin,
+      '2) chrome://extensions で拡張機能をリロード済みか 3) このタブ自体をリロードしたか 4) 拡張機能アイコン→サイトへのアクセスが「すべてのサイト」か'
+    );
+  }, 1500);
+}
+
+document.getElementById('go-btn').addEventListener('click', () => selectDevice(currentKey));
+window.addEventListener('resize', () => fitScale(DEVICES[currentKey].width, DEVICES[currentKey].height));
+
+renderDeviceList();
+fitScale(DEVICES[currentKey].width, DEVICES[currentKey].height);
+sizeTagEl.textContent = `${DEVICES[currentKey].label} — ${DEVICES[currentKey].width}×${DEVICES[currentKey].height}`;
+pingExtension();
+</script>
+</body>
+</html>
